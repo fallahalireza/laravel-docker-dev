@@ -1,6 +1,46 @@
+# ─────────────────────────────────────────────────────────────────
+# Laravel Docker Dev - Site docker-compose.yml
+# ─────────────────────────────────────────────────────────────────
+
+# build args مشترک برای سرویس‌های PHP
+x-php-build: &php-build
+  context: .
+  dockerfile: docker/php-fpm/Dockerfile
+  args:
+    PHP_VERSION:          ${PHP_VERSION:-8.4}
+    UID:                  ${UID:-1000}
+    GID:                  ${GID:-1000}
+    PHP_MEMORY_LIMIT:     ${PHP_MEMORY_LIMIT:-512M}
+    PHP_POST_MAX_SIZE:    ${PHP_POST_MAX_SIZE:-128M}
+    PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
+    PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-100M}
+    PHP_MAX_INPUT_TIME:   ${PHP_MAX_INPUT_TIME:-300}
+    PHP_MAX_INPUT_VARS:   ${PHP_MAX_INPUT_VARS:-3000}
+    XDEBUG_HOST:          ${XDEBUG_HOST:-host.docker.internal}
+    XDEBUG_IDE_KEY:       ${XDEBUG_IDE_KEY:-DOCKER}
+    XDEBUG_PORT:          ${XDEBUG_PORT:-9003}
+
+# محیط مشترک PHP
+x-php-env: &php-env
+  env_file:
+    - ./src/.env
+  environment:
+    XDEBUG_MODE: ${XDEBUG_MODE:-off}
+
+# تنظیمات مشترک سرویس‌های PHP
+x-php-common: &php-common
+  <<: *php-env
+  volumes:
+    - ./src:/var/www
+  networks:
+    - php-fpm-network
+    - mysql-network
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
 
-  # ─── Nginx Web Server ───────────────────────────────────────────
+  # ─── Nginx Web Server ────────────────────────────────────────
   nginx:
     image: ${NGINX_IMAGE:-nginx:stable-alpine}
     container_name: ${CONTAINER_NAME}_nginx
@@ -10,13 +50,13 @@ services:
       - ./docker/nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - nginx_logs:/var/log/nginx
     environment:
-      NGINX_SERVER_NAME: ${DOMAIN_DEV}
-      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-128M}
-      NGINX_CLIENT_BODY_TIMEOUT: ${NGINX_CLIENT_BODY_TIMEOUT:-300s}
-      NGINX_CLIENT_HEADER_TIMEOUT: ${NGINX_CLIENT_HEADER_TIMEOUT:-300s}
-      NGINX_PROXY_TIMEOUT: ${NGINX_PROXY_TIMEOUT:-300s}
-      NGINX_FASTCGI_READ_TIMEOUT: ${NGINX_FASTCGI_READ_TIMEOUT:-300s}
-      NGINX_FASTCGI_SEND_TIMEOUT: ${NGINX_FASTCGI_SEND_TIMEOUT:-300s}
+      NGINX_SERVER_NAME:             ${DOMAIN_DEV}
+      NGINX_CLIENT_MAX_BODY_SIZE:    ${NGINX_CLIENT_MAX_BODY_SIZE:-128M}
+      NGINX_CLIENT_BODY_TIMEOUT:     ${NGINX_CLIENT_BODY_TIMEOUT:-300s}
+      NGINX_CLIENT_HEADER_TIMEOUT:   ${NGINX_CLIENT_HEADER_TIMEOUT:-300s}
+      NGINX_PROXY_TIMEOUT:           ${NGINX_PROXY_TIMEOUT:-300s}
+      NGINX_FASTCGI_READ_TIMEOUT:    ${NGINX_FASTCGI_READ_TIMEOUT:-300s}
+      NGINX_FASTCGI_SEND_TIMEOUT:    ${NGINX_FASTCGI_SEND_TIMEOUT:-300s}
     networks:
       - php-fpm-network
       - traefik-network
@@ -29,50 +69,25 @@ services:
       - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=websecure"
       - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=80"
     healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1/ping" ]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/ping"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
 
-  # ─── PHP-FPM Application Server ─────────────────────────────────
+  # ─── PHP-FPM Application Server ──────────────────────────────
   php-fpm:
+    <<: *php-common
     container_name: ${CONTAINER_NAME}_php_fpm
-    build:
-      context: .
-      dockerfile: docker/php-fpm/Dockerfile
-      args:
-        PHP_VERSION: ${PHP_VERSION:-8.4}
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
-        PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
-        PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-128M}
-        PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
-        PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-100M}
-        PHP_MAX_INPUT_TIME: ${PHP_MAX_INPUT_TIME:-300}
-        PHP_MAX_INPUT_VARS: ${PHP_MAX_INPUT_VARS:-3000}
-        XDEBUG_HOST: ${XDEBUG_HOST:-host.docker.internal}
-        XDEBUG_IDE_KEY: ${XDEBUG_IDE_KEY:-DOCKER}
-        XDEBUG_PORT: ${XDEBUG_PORT:-9003}
-    env_file:
-      - ./src/.env
-    environment:
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
-    volumes:
-      - ./src:/var/www
-    networks:
-      - php-fpm-network
-      - mysql-network
+    build: *php-build
     healthcheck:
       test: ["CMD-SHELL", "php-fpm-healthcheck || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 15s
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # ─── Redis ──────────────────────────────────────────────────────
+  # ─── Redis ───────────────────────────────────────────────────
   redis:
     image: redis:alpine
     container_name: ${CONTAINER_NAME}_redis
@@ -94,32 +109,20 @@ services:
       retries: 3
       start_period: 5s
 
-  # ─── Queue Worker ───────────────────────────────────────────────
+  # ─── Queue Worker ─────────────────────────────────────────────
   queue-worker:
+    <<: *php-common
     container_name: ${CONTAINER_NAME}_queue
-    build:
-      context: .
-      dockerfile: docker/php-fpm/Dockerfile
-      args:
-        PHP_VERSION: ${PHP_VERSION:-8.4}
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
-        PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
-        PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-128M}
-        PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
-        PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-100M}
-        PHP_MAX_INPUT_TIME: ${PHP_MAX_INPUT_TIME:-300}
-        PHP_MAX_INPUT_VARS: ${PHP_MAX_INPUT_VARS:-3000}
-        XDEBUG_HOST: ${XDEBUG_HOST:-host.docker.internal}
-        XDEBUG_IDE_KEY: ${XDEBUG_IDE_KEY:-DOCKER}
-        XDEBUG_PORT: ${XDEBUG_PORT:-9003}
+    build: *php-build
     restart: unless-stopped
-    command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=90 --verbose --max-jobs=500
+    command: >
+      php artisan queue:work redis
+      --sleep=${QUEUE_SLEEP:-3}
+      --tries=${QUEUE_TRIES:-3}
+      --timeout=${QUEUE_TIMEOUT:-90}
+      --max-jobs=${QUEUE_MAX_JOBS:-500}
+      --verbose
     user: "${UID:-1000}:${GID:-1000}"
-    volumes:
-      - ./src:/var/www
-    env_file:
-      - ./src/.env
     environment:
       XDEBUG_MODE: off
     depends_on:
@@ -127,31 +130,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-      - php-fpm-network
-      - mysql-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # ─── Task Scheduler ─────────────────────────────────────────────
+  # ─── Task Scheduler ──────────────────────────────────────────
   scheduler:
+    <<: *php-common
     container_name: ${CONTAINER_NAME}_scheduler
-    build:
-      context: .
-      dockerfile: docker/php-fpm/Dockerfile
-      args:
-        PHP_VERSION: ${PHP_VERSION:-8.4}
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
-        PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
-        PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-128M}
-        PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
-        PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-100M}
-        PHP_MAX_INPUT_TIME: ${PHP_MAX_INPUT_TIME:-300}
-        PHP_MAX_INPUT_VARS: ${PHP_MAX_INPUT_VARS:-3000}
-        XDEBUG_HOST: ${XDEBUG_HOST:-host.docker.internal}
-        XDEBUG_IDE_KEY: ${XDEBUG_IDE_KEY:-DOCKER}
-        XDEBUG_PORT: ${XDEBUG_PORT:-9003}
+    build: *php-build
     restart: unless-stopped
     command: >
       sh -c "while true; do
@@ -159,10 +143,6 @@ services:
         sleep 60;
       done"
     user: "${UID:-1000}:${GID:-1000}"
-    volumes:
-      - ./src:/var/www
-    env_file:
-      - ./src/.env
     environment:
       XDEBUG_MODE: off
     depends_on:
@@ -170,13 +150,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-      - php-fpm-network
-      - mysql-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # ─── Mailpit (Local Email Testing) ──────────────────────────────
+  # ─── Mailpit (Local Email Testing) ───────────────────────────
   mailpit:
     image: axllent/mailpit:latest
     container_name: ${CONTAINER_NAME}_mailpit
@@ -189,14 +164,14 @@ services:
     labels:
       - "traefik.enable=false"
 
-# ─── Named Volumes ───────────────────────────────────────────────
+# ─── Named Volumes ────────────────────────────────────────────
 volumes:
   redis_data:
     name: ${CONTAINER_NAME}_redis_data
   nginx_logs:
     name: ${CONTAINER_NAME}_nginx_logs
 
-# ─── Networks ────────────────────────────────────────────────────
+# ─── Networks ─────────────────────────────────────────────────
 networks:
   php-fpm-network:
     name: ${CONTAINER_NAME}-php-fpm-network

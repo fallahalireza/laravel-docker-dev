@@ -3,3 +3,8 @@ composer.lock
 .phpunit.result.cache
 .idea/
 .DS_Store
+sites/*/
+!sites/.gitkeep
+__pycache__/
+*.pyc
+*.pyo

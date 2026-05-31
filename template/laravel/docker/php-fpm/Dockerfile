@@ -50,17 +50,10 @@ RUN docker-php-ext-configure gd \
         intl \
         opcache
 
-# ── Install Redis Extension ───────────────────────────────────────
+# ── Install Redis + Xdebug در یک مرحله (کاهش لایه‌های image) ────
 RUN apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
-    && apk del .phpize-deps \
-    && rm -rf /tmp/pear
-
-# ── Install Xdebug ───────────────────────────────────────────────
-RUN apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS \
-    && pecl install xdebug \
-    && docker-php-ext-enable xdebug \
+    && pecl install redis xdebug \
+    && docker-php-ext-enable redis xdebug \
     && apk del .phpize-deps \
     && rm -rf /tmp/pear
 
@@ -78,6 +71,8 @@ RUN { \
     echo "display_errors=On"; \
     echo "log_errors=On"; \
     echo "error_log=/var/log/php/error.log"; \
+    echo "realpath_cache_size=4096K"; \
+    echo "realpath_cache_ttl=600"; \
 } > /usr/local/etc/php/conf.d/99-custom.ini
 
 # ── Configure OPcache (dev-friendly) ─────────────────────────────
@@ -120,10 +115,12 @@ RUN { \
     echo "pm.start_servers=4"; \
     echo "pm.min_spare_servers=2"; \
     echo "pm.max_spare_servers=6"; \
+    echo "pm.process_idle_timeout=10s"; \
+    echo "pm.max_requests=500"; \
 } > /usr/local/etc/php-fpm.d/www.conf
 
 # ── Install php-fpm-healthcheck ───────────────────────────────────
-RUN curl -o /usr/local/bin/php-fpm-healthcheck \
+RUN curl -fsSL -o /usr/local/bin/php-fpm-healthcheck \
     https://raw.githubusercontent.com/renatomefi/php-fpm-healthcheck/master/php-fpm-healthcheck \
     && chmod +x /usr/local/bin/php-fpm-healthcheck
 

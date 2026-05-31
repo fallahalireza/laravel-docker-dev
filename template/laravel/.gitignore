@@ -1,5 +1,5 @@
 # Environment files
-.env
+!.env
 !.env.example
 
 # Source code (user places their Laravel app here)
