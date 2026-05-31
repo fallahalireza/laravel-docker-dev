@@ -1,0 +1,15 @@
+# Environment files
+.env
+!.env.example
+
+# Source code (user places their Laravel app here)
+src/
+!src/.gitkeep
+
+# Logs
+*.log
+docker/nginx/logs/
+
+# OS files
+.DS_Store
+Thumbs.db
